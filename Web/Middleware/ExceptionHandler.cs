@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
-using Serilog;
 
 namespace Web.Middleware;
 
@@ -20,6 +19,12 @@ public class ExceptionHandler(ILogger<ExceptionHandler> logger) : IExceptionHand
         Exception exception, 
         CancellationToken cancellationToken)
     {
+        // 👇 Временный лог для отладки
+        logger.LogError(
+            "🔍 DEBUG: Exception type={ExceptionType}, Message={Message}, StackTrace={StackTrace}",
+            exception.GetType().FullName,  // 👈 Полное имя типа с неймспейсом!
+            exception.Message,
+            exception.StackTrace);
         var correlationId = httpContext.Items["CorrelationId"]?.ToString() ?? "unknown";
 
         logger.LogError(exception, 
@@ -50,6 +55,16 @@ public class ExceptionHandler(ILogger<ExceptionHandler> logger) : IExceptionHand
                 problemDetails.Detail = notFound.Message;
                 problemDetails.Extensions["errorCode"] = notFound.ErrorCode;
                 problemDetails.Extensions["context"] = notFound.Context;
+                break;
+            
+            // 🔹 409: Конфликт бизнес-правил (сток, резерв и т.д.) — 👇 НОВЫЙ CASE
+            case StockReservationException ex:
+                httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
+                problemDetails.Status = StatusCodes.Status409Conflict;
+                problemDetails.Title = "Конфликт данных";
+                problemDetails.Detail = ex.Message;
+                problemDetails.Extensions["errorCode"] = ex.ErrorCode;
+                problemDetails.Extensions["context"] = ex.Context;
                 break;
             
             // 🔹 404: Сущность не найдена (бизнес-логика)

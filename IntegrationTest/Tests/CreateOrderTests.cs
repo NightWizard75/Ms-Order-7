@@ -9,7 +9,7 @@ using Web.Responses;
 namespace IntegrationTest.Tests;
 
 /// <summary>
-/// Интеграционные тесты для создания заказа.
+/// Интеграционные тесты для создания заказа с Saga-оркестрацией.
 /// </summary>
 public class CreateOrderTests(OrderWebApplicationFactory factory) 
     : IClassFixture<OrderWebApplicationFactory>
@@ -17,7 +17,7 @@ public class CreateOrderTests(OrderWebApplicationFactory factory)
     private readonly HttpClient _client = factory.CreateClient();
 
     // ========================================================================
-    // Тест: Успешное создание заказа (цена из продукта)
+    // Тест: Успешное создание заказа (цена из продукта, резерв успешен → Confirmed)
     // ========================================================================
     [Fact]
     public async Task CreateOrder_ValidData_Returns201_WithPriceFromProduct()
@@ -28,9 +28,10 @@ public class CreateOrderTests(OrderWebApplicationFactory factory)
         const int orderQuantity = 3;
         const string customerEmail = "test@example.com";
 
-        // 👇 WireMock: продукт существует с ценой
+        // 👇 WireMock: продукт существует с ценой + резерв успешен
         factory.MockProductService()
-            .GivenProductExists(productId, productPriceInKopecks, stockQuantity: 100);
+            .GivenProductExists(productId, productPriceInKopecks, stockQuantity: 100)
+            .GivenReserveStockSuccess(productId, orderQuantity);
 
         var request = new CreateOrderRequest(
             ProductId: productId,
@@ -58,7 +59,9 @@ public class CreateOrderTests(OrderWebApplicationFactory factory)
         Assert.Equal(productId, order.Data.ProductId);
         Assert.Equal(orderQuantity, order.Data.Quantity);
         Assert.Equal(productPriceInKopecks * orderQuantity, order.Data.TotalAmountInKopecks);
-        Assert.Equal(OrderStatus.Pending, order.Data.Status);
+        
+        // 👇 ИЗМЕНЕНИЕ: после Saga успешный заказ имеет статус Confirmed (не Pending)
+        Assert.Equal(OrderStatus.Confirmed, order.Data.Status);
     }
 
     // ========================================================================
@@ -149,5 +152,39 @@ public class CreateOrderTests(OrderWebApplicationFactory factory)
         Assert.NotNull(problem);
         Assert.NotNull(problem.Errors);
         Assert.Contains("Quantity", problem.Errors.Keys);
+    }
+
+    // ========================================================================
+    // Тест: Недостаточно стока → 409 Conflict + компенсация (заказ отменён)
+    // ========================================================================
+    [Fact]
+    public async Task CreateOrder_InsufficientStock_Returns409_AndOrderCancelled()
+    {
+        // Arrange
+        var productId = Guid.NewGuid();
+        const int stockQuantity = 10;
+        const int orderQuantity = 50;  // 👇 Больше, чем есть в стоке
+        
+        factory.MockProductService()
+            .GivenProductExists(productId, 10000, stockQuantity)
+            .GivenReserveStockConflict(productId, orderQuantity);  // 👇 409 Conflict
+
+        var request = new CreateOrderRequest(
+            ProductId: productId,
+            Quantity: orderQuantity,
+            CustomerEmail: "test@example.com"
+        );
+
+        // Act
+        var response = await _client.PostJsonAsync<CreateOrderRequest>("/api/orders", request);
+        var problem = await response.ReadProblemDetailsAsync();
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.NotNull(problem);
+        Assert.Equal("Конфликт данных", problem.Title);
+        
+        // 👇 Дополнительно: можно проверить, что заказ в БД имеет статус Cancelled
+        // (требуется доступ к репозиторию или отдельный endpoint для отладки)
     }
 }

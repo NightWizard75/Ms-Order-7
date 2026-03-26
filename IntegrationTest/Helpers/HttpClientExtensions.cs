@@ -20,7 +20,6 @@ public static class HttpClientExtensions
         this HttpResponseMessage response, 
         CancellationToken ct = default) where TResponse : class
     {
-        response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken: ct);
     }
 

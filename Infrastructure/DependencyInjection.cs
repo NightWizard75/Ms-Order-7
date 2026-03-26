@@ -34,6 +34,7 @@ public static class DependencyInjection
 
         // 👇 Репозитории 
         services.AddScoped<IOrderRepository, OrderRepository>();
+        services.AddScoped<ISagaRepository, SagaRepository>();
         
         
         // ==========================================

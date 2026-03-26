@@ -58,6 +58,26 @@ public class Order
     public string CorrelationId { get; private set; } = string.Empty;
     public DateTime CreatedAt { get; private set; }
 
+    /// <summary>
+    /// Обновляет цену заказа после получения данных из продукта.
+    /// Может вызываться только в статусе Pending.
+    /// </summary>
+    public void UpdatePrice(int priceInKopecks)
+    {
+        if (Status != OrderStatus.Pending)
+            throw new InvalidOperationException(
+                $"Нельзя обновить цену заказа в статусе {Status}");
+
+        if (priceInKopecks < 0)
+            throw new InvalidOperationException("Цена не может быть отрицательной");
+
+        // 👇 Используем приватный сеттер через метод внутри класса
+        PriceInKopecks = priceInKopecks;
+
+        // 👇 Пересчитываем итоговую сумму после изменения цены
+        TotalAmountInKopecks = CalculateTotalAmount();
+    }
+
     // ========================================================================
     // Публичные методы-конвертеры
     // ========================================================================

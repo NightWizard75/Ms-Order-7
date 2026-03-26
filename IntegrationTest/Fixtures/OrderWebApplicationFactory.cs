@@ -144,6 +144,50 @@ public class OrderWebApplicationFactory : WebApplicationFactory<Program>, IAsync
 
         return this;
     }
+    
+    // ========================================================================
+    // Методы для мокирования ReserveStockAsync (Saga)
+    // ========================================================================
+
+    public OrderWebApplicationFactory GivenReserveStockSuccess(Guid productId, int quantity)
+    {
+        MockProductService();
+        var mock = _productServiceMock!;
+
+        mock
+            .Given(Request.Create()
+                .WithPath($"/api/products/{productId}/reserve")
+                .UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithBodyAsJson(new ApiResponse<bool>(true, 200, true, null))
+                .WithHeader("Content-Type", "application/json"));
+
+        return this;
+    }
+
+    public OrderWebApplicationFactory GivenReserveStockConflict(Guid productId, int quantity)
+    {
+        MockProductService();
+        var mock = _productServiceMock!;
+        var response = new ApiResponse<bool>(
+            Success: false,
+            StatusCode: 409,
+            Data: false,
+            Message: "Недостаточно стока"
+        );
+
+        mock
+            .Given(Request.Create()
+                .WithPath($"/api/products/{productId}/reserve")
+                .UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(409)
+                .WithBodyAsJson(response)
+                .WithHeader("Content-Type", "application/json"));
+
+        return this;
+    }
 
     // ========================================================================
     // IAsyncLifetime: управление контейнерами
