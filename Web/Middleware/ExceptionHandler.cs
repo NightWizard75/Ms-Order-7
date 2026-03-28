@@ -124,6 +124,19 @@ public class ExceptionHandler(ILogger<ExceptionHandler> logger) : IExceptionHand
                 problemDetails.Detail = "Пожалуйста, попробуйте позже.";
                 httpContext.Response.Headers.RetryAfter = "30";
                 break;
+            
+            case Polly.Timeout.TimeoutRejectedException timeout:
+            case TaskCanceledException canceled 
+                when canceled.InnerException is HttpRequestException || 
+                     canceled.Message.Contains("The operation was canceled", StringComparison.OrdinalIgnoreCase):
+    
+                httpContext.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                problemDetails.Status = StatusCodes.Status503ServiceUnavailable;
+                problemDetails.Title = "Сервис временно недоступен";
+                problemDetails.Detail = "Внешний сервис не ответил в течение отведённого времени";
+                problemDetails.Extensions["errorCode"] = "ExternalServiceTimeout";
+                httpContext.Response.Headers.RetryAfter = "30";
+                break;
 
             // 🔹 500: Всё остальное (без утечки деталей в продакшене)
             default:

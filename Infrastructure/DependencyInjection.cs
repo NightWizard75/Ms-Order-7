@@ -59,6 +59,11 @@ public static class DependencyInjection
                 {
                     ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
                         .Handle<HttpRequestException>()
+                        .Handle<TimeoutRejectedException>()
+                        .Handle<TaskCanceledException>(ex => 
+                            // 👇 Перехватываем только таймауты HTTP, не пользовательские отмены
+                            ex.InnerException is HttpRequestException || 
+                            ex.InnerException is IOException)
                         .HandleResult(r => (int)r.StatusCode >= 500),
                     MaxRetryAttempts = settings.MaxRetryAttempts,
                     DelayGenerator = context => 

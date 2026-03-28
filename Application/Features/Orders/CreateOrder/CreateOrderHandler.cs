@@ -91,6 +91,7 @@ public class CreateOrderHandler(
                 var reserved = await productServiceClient.ReserveStockAsync(
                     request.ProductId, 
                     request.Quantity, 
+                    request.CorrelationId, 
                     cts.Token);
                 
                 if (!reserved)

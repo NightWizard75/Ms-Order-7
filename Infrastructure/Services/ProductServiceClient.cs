@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using System.Diagnostics.Metrics;
 using System.Net.Http.Json;
 using Application.Shared.DTOs.External;
+using Newtonsoft.Json;
 
 namespace Infrastructure.Services;
 
@@ -118,24 +119,26 @@ public class ProductServiceClient : IProductServiceClient
         }
     }
 
-    public async Task<bool> ReserveStockAsync(Guid productId, int quantity, CancellationToken ct = default)
+    public async Task<bool> ReserveStockAsync(Guid productId, int quantity, string correlationId, CancellationToken ct = default)
     {
-        var stopwatch = StartMetrics("ReserveStockAsync");
-        
+        var stopwatch = Stopwatch.StartNew();
+        RequestsTotal.Add(1, new[] { 
+            new KeyValuePair<string, object?>("method", "ReserveStockAsync") 
+        });
+    
         try
         {
-            var content = new StringContent(
-                $"{{\"quantity\": {quantity}}}",
-                Encoding.UTF8,
-                "application/json"
-            );
+            var request = new ReserveStockRequest(productId, quantity, correlationId);
+        
+            // 👇 Newtonsoft.Json сериализация
+            var json = JsonConvert.SerializeObject(request);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var response = await _resiliencePipeline.ExecuteAsync(
-                async (cancelToken) => await _httpClient.PostAsync($"/api/products/{productId}/reserve", content, cancelToken),
+                async (cancelToken) => await _httpClient.PostAsync("/api/products/reserve", content, cancelToken),
                 ct
             );
 
-            // 👇 Switch expression с выносом логирования в метод
             return response.StatusCode switch
             {
                 HttpStatusCode.OK or HttpStatusCode.NoContent => true,
@@ -150,13 +153,19 @@ public class ProductServiceClient : IProductServiceClient
         }
         catch (HttpRequestException ex)
         {
-            RecordFailure("ReserveStockAsync", ex.GetType().Name);
+            RequestsFailed.Add(1, new[] { 
+                new KeyValuePair<string, object?>("method", "ReserveStockAsync"),
+                new KeyValuePair<string, object?>("error", ex.GetType().Name)
+            });
             _logger.LogError(ex, "Ошибка при резервировании стока для продукта {ProductId}", productId);
             throw;
         }
         finally
         {
-            StopMetrics(stopwatch, "ReserveStockAsync");
+            stopwatch.Stop();
+            RequestDuration.Record(
+                stopwatch.Elapsed.TotalSeconds, 
+                new[] { new KeyValuePair<string, object?>("method", "ReserveStockAsync") });
         }
     }
 

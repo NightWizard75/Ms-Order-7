@@ -21,9 +21,10 @@ public interface IProductServiceClient
     /// </summary>
     /// <param name="productId">Идентификатор продукта</param>
     /// <param name="quantity">Количество для резерва</param>
+    /// <param name="correlationId">Токен отмены</param>
     /// <param name="ct">Токен отмены</param>
     /// <returns>True если резерв успешен, иначе false</returns>
-    Task<bool> ReserveStockAsync(Guid productId, int quantity, CancellationToken ct = default);
+    Task<bool> ReserveStockAsync(Guid productId, int quantity, string correlationId, CancellationToken ct = default);
     
     /// <summary>
     /// Возвращает продукт с указанным ID.
