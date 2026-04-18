@@ -156,7 +156,7 @@ public class OrderWebApplicationFactory : WebApplicationFactory<Program>, IAsync
 
         mock
             .Given(Request.Create()
-                .WithPath($"/api/products/{productId}/reserve")
+                .WithPath($"/api/products/reserve")
                 .UsingPost())
             .RespondWith(Response.Create()
                 .WithStatusCode(200)
@@ -179,7 +179,7 @@ public class OrderWebApplicationFactory : WebApplicationFactory<Program>, IAsync
 
         mock
             .Given(Request.Create()
-                .WithPath($"/api/products/{productId}/reserve")
+                .WithPath($"/api/products/reserve")
                 .UsingPost())
             .RespondWith(Response.Create()
                 .WithStatusCode(409)
