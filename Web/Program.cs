@@ -1,4 +1,3 @@
-using System.Diagnostics.Metrics;
 using Application;
 using Infrastructure;
 using Infrastructure.Database.Seeders;
@@ -22,7 +21,7 @@ builder.Host.UseSerilog();
 // 🔧 Dependency Injection
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.AddWeb();
+builder.Services.AddWeb(builder.Configuration);
 
 // 🔧 Exceptions: регистрируем обработчик
 builder.Services.AddExceptionHandler<ExceptionHandler>();

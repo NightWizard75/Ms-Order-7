@@ -2,6 +2,8 @@
 using Application.Features.Orders.GetOrderStatus;
 using Application.Shared.DTOs.Order;
 using MediatR;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Web.Extensions;
 using Web.Responses;
@@ -13,6 +15,7 @@ namespace Web.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/orders")]
+[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
 public class ShowOrderController(IMediator mediator) : ControllerBase
 {
     /// <summary>

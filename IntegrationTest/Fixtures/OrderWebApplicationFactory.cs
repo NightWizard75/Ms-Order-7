@@ -9,9 +9,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Testcontainers.PostgreSql;
 using Web.Responses;
+using WireMock.Logging;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using WireMock.Server;
+using WireMock.Settings;
 
 namespace IntegrationTest.Fixtures;
 
@@ -92,7 +94,11 @@ public class OrderWebApplicationFactory : WebApplicationFactory<Program>, IAsync
 
     public OrderWebApplicationFactory GivenProductExists(Guid productId, int priceInKopecks, int stockQuantity)
     {
-        _productServiceMock ??= MockProductService()._productServiceMock;
+        _productServiceMock ??= MockProductService()._productServiceMock;_productServiceMock ??= WireMockServer.Start(new WireMockServerSettings
+               {
+                   StartAdminInterface = true,  // 👈 Включает UI: http://localhost:<порт>/__admin__/
+                   Logger = new WireMockConsoleLogger()  // 👈 Логи в консоль (опционально)
+               });
 
         var response = new ApiResponse<ProductDto>(
             Success: true,

@@ -1,4 +1,6 @@
 ﻿using MediatR;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Web.Extensions;
 using Web.Requests;
@@ -11,6 +13,7 @@ namespace Web.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/orders")]
+[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
 public class CreateOrderController(IMediator mediator) : ControllerBase
 {
     /// <summary>

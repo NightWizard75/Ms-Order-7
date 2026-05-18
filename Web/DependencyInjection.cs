@@ -1,17 +1,60 @@
 ﻿using System.Reflection;
 using FluentValidation;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using Web.Options;
 
 namespace Web;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddWeb(this IServiceCollection services)
+    public static IServiceCollection AddWeb(
+        this IServiceCollection services, 
+        IConfiguration configuration)
     {
-        var assembly = Assembly.GetExecutingAssembly();
-        
         // 👇 Валидаторы для Web-DTO
-        services.AddValidatorsFromAssembly(assembly);
+        services.AddValidatorsFromAssembly(Assembly.GetExecutingAssembly());
+        
+        services.AddAuthentication(options =>
+            {
+                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+            })
+            .AddJwtBearer(options =>
+            {
+                var auth = configuration.GetSection("Authentication").Get<AuthOptions>();
+    
+                // 🔹 1. Загружаем ключи вручную из 'JWKS' (синхронно, для простоты)
+                using var http = new HttpClient();
+    
+                var jwksUrl = $"{auth?.Authority}/.well-known/openid-configuration/jwks";
+                var jwksJson = http.GetStringAsync(jwksUrl).GetAwaiter().GetResult();
+                var jwks = new JsonWebKeySet(jwksJson);
+                var signingKeys = jwks.GetSigningKeys();
+    
+                if (!signingKeys.Any())
+                    throw new InvalidOperationException($"No signing keys found at {jwksUrl}");
+    
+                // 🔹 2. Настраиваем валидацию с явным ключом
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidIssuer = auth?.Authority,
+                    ValidateAudience = true,
+                    ValidAudience = auth?.Audience,
+                    ValidateLifetime = true,
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKeys = signingKeys,  // ← Ключи заданы явно
+                    ClockSkew = TimeSpan.Zero
+                };
+    
+                // 🔹 3. Отключаем Authority, чтобы не было конфликта с ручными ключами
+                options.Authority = null;
+                options.RequireHttpsMetadata = false;
+            });
+        
+        // Обязательно для [Authorize]
+        services.AddAuthorization();
     
         // 👇 Контроллеры + глобальный фильтр валидации
         services.AddControllers();
