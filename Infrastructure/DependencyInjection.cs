@@ -1,5 +1,8 @@
-﻿using Application.Shared.Interfaces;
+﻿using System.Net.Http.Headers;
+using Application.Shared.Interfaces;
 using Infrastructure.Database.Context;
+using Infrastructure.Handlers;
+using Infrastructure.Options;
 using Infrastructure.Repositories;
 using Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +22,10 @@ public static class DependencyInjection
         this IServiceCollection services, 
         IConfiguration configuration)
     {
+        // ==========================================
+        // 👇 БАЗОВАЯ ИНФРАСТРУКТУРА
+        // ==========================================
+        
         services.AddDbContext<OrderDbContext>(options =>
             options.UseNpgsql(
                 configuration.GetConnectionString("DefaultConnection"),
@@ -38,7 +45,7 @@ public static class DependencyInjection
         
         
         // ==========================================
-        // 👇 Регистрация ProductServiceClient (упрощённая)
+        // 👇 ProductServiceClient (существующий, с Polly)
         // ==========================================
         
         // 1. Привязка настроек из appsettings.json
@@ -62,8 +69,7 @@ public static class DependencyInjection
                         .Handle<TimeoutRejectedException>()
                         .Handle<TaskCanceledException>(ex => 
                             // 👇 Перехватываем только таймауты HTTP, не пользовательские отмены
-                            ex.InnerException is HttpRequestException || 
-                            ex.InnerException is IOException)
+                            ex.InnerException is HttpRequestException or IOException)
                         .HandleResult(r => (int)r.StatusCode >= 500),
                     MaxRetryAttempts = settings.MaxRetryAttempts,
                     DelayGenerator = context => 
@@ -82,9 +88,33 @@ public static class DependencyInjection
                 .Build();
         });
         
-        // 3. Регистрация HttpClient
-        services.AddHttpClient<IProductServiceClient, ProductServiceClient>();
-        // 👆 ProductServiceClient сам создаст пайплайн в конструкторе
+        // 3. Typed HttpClient для ProductService
+        services.AddTransient<AuthDelegatingHandler>();
+        services.AddHttpClient<IProductServiceClient, ProductServiceClient>()
+            .AddHttpMessageHandler<AuthDelegatingHandler>();
+        
+        // ==========================================
+        // 👇 IdentityClient (НОВЫЙ: для получения токенов)
+        // ==========================================
+        
+        // 1. Bind конфигурации к опциям
+        services.Configure<IdentityClientOptions>(
+            configuration.GetSection("IdentityClient"));
+        
+        // 2. Named HttpClient для IdentityServer (простой, без Polly)
+        // Почему без Polly: /connect/token — быстрый локальный вызов, 
+        // если он падает — лучше сразу получить ошибку, чем ждать ретраев
+        services.AddHttpClient("IdentityServer", (serviceProvider, client) =>
+        {
+            var options = serviceProvider.GetRequiredService<IOptions<IdentityClientOptions>>().Value;
+            
+            client.BaseAddress = new Uri(options.Authority);
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            client.Timeout = TimeSpan.FromSeconds(options.RequestTimeoutSeconds + 5);
+        });
+        
+        // 3. Регистрация провайдера токенов
+        services.AddSingleton<ITokenProvider, ClientCredentialsTokenService>();
 
         return services;
     }

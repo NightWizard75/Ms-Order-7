@@ -1,7 +1,9 @@
 ﻿using System.Reflection;
 using FluentValidation;
+using Infrastructure.Shared;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using Web.Options;
 
 namespace Web;
@@ -27,7 +29,7 @@ public static class DependencyInjection
                 // 🔹 1. Загружаем ключи вручную из 'JWKS' (синхронно, для простоты)
                 using var http = new HttpClient();
     
-                var jwksUrl = $"{auth?.Authority}/.well-known/openid-configuration/jwks";
+                var jwksUrl = auth?.Authority + OidcEndpoints.Jwks;
                 var jwksJson = http.GetStringAsync(jwksUrl).GetAwaiter().GetResult();
                 var jwks = new JsonWebKeySet(jwksJson);
                 var signingKeys = jwks.GetSigningKeys();
@@ -51,6 +53,16 @@ public static class DependencyInjection
                 // 🔹 3. Отключаем Authority, чтобы не было конфликта с ручными ключами
                 options.Authority = null;
                 options.RequireHttpsMetadata = false;
+                
+                // 🔹 4. Минимальное логирование событий
+                options.Events = new JwtBearerEvents
+                {
+                    OnAuthenticationFailed = context =>
+                    {
+                        Console.WriteLine($"[Auth] Failed: {context.Exception.Message}");
+                        return Task.CompletedTask;
+                    }
+                };
             });
         
         // Обязательно для [Authorize]
@@ -59,7 +71,7 @@ public static class DependencyInjection
         // 👇 Контроллеры + глобальный фильтр валидации
         services.AddControllers();
         services.AddEndpointsApiExplorer();
-        services.AddSwaggerGen(c => c.SwaggerDoc("v1", new() { Title = "Order Service API", Version = "v1" }));
+        services.AddSwaggerGen(c => c.SwaggerDoc("v1", new OpenApiInfo { Title = "Order Service API", Version = "v1" }));
 
         return services;
     }

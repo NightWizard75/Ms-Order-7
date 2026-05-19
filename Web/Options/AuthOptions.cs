@@ -21,4 +21,6 @@ public record AuthOptions
     /// Требовать HTTPS для метаданных (включать только в продакшене).
     /// </summary>
     public bool RequireHttpsMetadata { get; init; } = false;
+    
+    public bool AllowInsecureHttps { get; init; } = false;
 }
