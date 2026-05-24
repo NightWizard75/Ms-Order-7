@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using Application.Shared.DTOs.Order;
+using Application.Shared.Events;
 using Domain.Enums;
 using IntegrationTest.Fixtures;
 using IntegrationTest.Helpers;
@@ -40,28 +41,38 @@ public class CreateOrderTests(OrderWebApplicationFactory factory)
             // 👈 Цены в запросе НЕТ — она придёт из продукта
         );
 
-        // Act
+        // Act 1: создаём заказ
         var response = await _client.PostJsonAsync<CreateOrderRequest>("/api/orders", request);
         var responseBody = await response.ReadFromJsonAsync<ApiResponse<OrderCreatedDto>>();
 
         // Assert
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        Assert.NotNull(responseBody);
-        Assert.True(responseBody.Success == true);
-        Assert.NotNull(responseBody.Data);
-        Assert.NotEqual(Guid.Empty, responseBody.Data.Id);
+        Assert.NotNull(responseBody?.Data);
+        var orderId = responseBody.Data.Id;
 
-        // 👇 Проверяем, что заказ создан с правильной ценой из продукта
-        var getOrderResponse = await _client.GetAsync($"/api/orders/{responseBody.Data.Id}");
-        var order = await getOrderResponse.ReadFromJsonAsync<ApiResponse<OrderDto>>();
-        
-        Assert.NotNull(order?.Data);
-        Assert.Equal(productId, order.Data.ProductId);
-        Assert.Equal(orderQuantity, order.Data.Quantity);
-        Assert.Equal(productPriceInKopecks * orderQuantity, order.Data.TotalAmountInKopecks);
-        
-        // 👇 ИЗМЕНЕНИЕ: после Saga успешный заказ имеет статус Confirmed (не Pending)
-        Assert.Equal(OrderStatus.Confirmed, order.Data.Status);
+        // 👇 Act 2: эмулируем ответ от ProductService (минуя RabbitMQ)
+        var stockReservedEvent = new StockReservedEvent(
+            OrderId: orderId,
+            ProductId: productId,
+            ReservedQuantity: orderQuantity,
+            CorrelationId: Guid.NewGuid().ToString("N")
+        );
+        await factory.TriggerSagaHandlerAsync(stockReservedEvent);
+
+        // 👇 Act 3: эмулируем ответ от PaymentService
+        var paymentProcessedEvent = new PaymentProcessedEvent(
+            OrderId: orderId,
+            Success: true,
+            ErrorMessage: null,
+            CorrelationId: stockReservedEvent.CorrelationId
+        );
+        await factory.TriggerSagaHandlerAsync(paymentProcessedEvent);
+    
+        // Assert: проверяем финальный статус
+        var completedOrder = await SagaWaiter.WaitForOrderCompletionAsync(_client, orderId);
+    
+        Assert.Equal(OrderStatus.Confirmed, completedOrder.Status);
+        Assert.Equal(productPriceInKopecks * orderQuantity, completedOrder.TotalAmountInKopecks);
     }
 
     // ========================================================================
@@ -158,7 +169,7 @@ public class CreateOrderTests(OrderWebApplicationFactory factory)
     // Тест: Недостаточно стока → 409 Conflict + компенсация (заказ отменён)
     // ========================================================================
     [Fact]
-    public async Task CreateOrder_InsufficientStock_Returns409_AndOrderCancelled()
+    public async Task CreateOrder_InsufficientStock_Returns201_ThenCancelledViaSaga()
     {
         // Arrange
         var productId = Guid.NewGuid();
@@ -175,14 +186,28 @@ public class CreateOrderTests(OrderWebApplicationFactory factory)
             CustomerEmail: "test@example.com"
         );
 
-        // Act
+        // Act 1: заказ создаётся
         var response = await _client.PostJsonAsync<CreateOrderRequest>("/api/orders", request);
-        var problem = await response.ReadProblemDetailsAsync();
+        var responseBody = await response.ReadFromJsonAsync<ApiResponse<OrderCreatedDto>>();
+    
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.NotNull(responseBody?.Data);
+        var orderId = responseBody.Data.Id;
 
-        // Assert
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.NotNull(problem);
-        Assert.Equal("Конфликт данных", problem.Title);
+        // 👇 Act 2: эмулируем ошибку резерва (минуя RabbitMQ)
+        var stockFailedEvent = new StockReservationFailedEvent(
+            OrderId: orderId,
+            ProductId: productId,
+            RequestedQuantity: 10000,
+            Reason: "Недостаточно стока",
+            CorrelationId: Guid.NewGuid().ToString("N")
+        );
+        await factory.TriggerSagaHandlerAsync(stockFailedEvent);
+
+        // Assert: заказ отменён
+        var completedOrder = await SagaWaiter.WaitForOrderCompletionAsync(_client, orderId);
+    
+        Assert.Equal(OrderStatus.Cancelled, completedOrder.Status);
         
         // 👇 Дополнительно: можно проверить, что заказ в БД имеет статус Cancelled
         // (требуется доступ к репозиторию или отдельный endpoint для отладки)

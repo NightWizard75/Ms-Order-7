@@ -67,7 +67,7 @@ if (app.Environment.IsDevelopment())
 
 // перед app.MapControllers():
 app.UseHttpMetrics();  // Автоматические метрики HTTP-запросов
-app.MapMetrics();      // Эндпоинт /metrics для Prometheus
+app.MapMetrics().AllowAnonymous();      // Эндпоинт /metrics для Prometheus должен быть анонимным
 
 app.UseAuthorization();
 app.MapControllers();

@@ -1,11 +1,17 @@
-﻿using Application.Shared.DTOs.External;
+﻿using Application.Services;
+using Application.Shared.DTOs.External;
+using Application.Shared.Events;
 using Infrastructure.Database.Context;
 using Infrastructure.Services;
+using IntegrationTest.Auth;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Testcontainers.PostgreSql;
 using Web.Responses;
@@ -60,6 +66,33 @@ public class OrderWebApplicationFactory : WebApplicationFactory<Program>, IAsync
                     options.BaseAddress = _productServiceMock.Urls[0];
                 });
             }
+            
+            // 👇 1. Удаляем ВСЕ существующие настройки аутентификации
+            services.RemoveAll<IConfigureOptions<AuthenticationOptions>>();
+            services.RemoveAll<IPostConfigureOptions<AuthenticationOptions>>();
+            services.RemoveAll<IAuthenticationSchemeProvider>();
+
+            // 👇 2. Регистрируем TestAuthHandler ПОД ДВУМЯ ИМЕНАМИ
+            services.AddAuthentication(TestAuthHandler.SchemeName)
+                // Имя 1: "TestScheme" — для явного использования в тестах
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(
+                    TestAuthHandler.SchemeName, _ => { })
+                // Имя 2: "Bearer" — чтобы [Authorize(AuthenticationSchemes = "Bearer")] работал
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(
+                    JwtBearerDefaults.AuthenticationScheme, _ => { });
+
+            // 👇 3. Явно задаём дефолтные схемы
+            services.Configure<AuthenticationOptions>(options =>
+            {
+                options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
+                options.DefaultChallengeScheme = TestAuthHandler.SchemeName;
+                options.DefaultScheme = TestAuthHandler.SchemeName;
+            });
+
+            // 👇 4. Политика авторизации
+            services.AddAuthorizationBuilder()
+                .AddPolicy("TestPolicy", policy => 
+                    policy.RequireAuthenticatedUser());        
         });
 
         // 👇 3. Отключаем авто-сидинг в тестах
@@ -221,4 +254,31 @@ public class OrderWebApplicationFactory : WebApplicationFactory<Program>, IAsync
     // ========================================================================
 
     public OrderDbContext GetDbContext() => Services.GetRequiredService<OrderDbContext>();
+    
+    /// <summary>
+    /// Прямой вызов обработчика Saga для тестов (минуя RabbitMQ).
+    /// </summary>
+    public async Task TriggerSagaHandlerAsync<TEvent>(TEvent @event, CancellationToken ct = default)
+        where TEvent : class
+    {
+        using var scope = Services.CreateScope();
+        var orchestrator = scope.ServiceProvider.GetRequiredService<OrderSagaOrchestrator>();
+    
+        // 👇 Маршрутизация по типу события
+        switch (@event)
+        {
+            case StockReservedEvent stockReserved:
+                await orchestrator.HandleStockReservedAsync(stockReserved.OrderId, stockReserved, ct);
+                break;
+            case StockReservationFailedEvent stockFailed:
+                await orchestrator.HandleStockReservationFailedAsync(stockFailed.OrderId, stockFailed, ct);
+                break;
+            case PaymentProcessedEvent paymentProcessed:
+                await orchestrator.HandlePaymentProcessedAsync(paymentProcessed.OrderId, paymentProcessed, ct);
+                break;
+        }
+    
+        // 👇 Дождаться завершения фоновых задач (если есть)
+        await Task.Delay(100, ct);
+    }
 }
