@@ -1,5 +1,7 @@
 ﻿using System.Net.Http.Headers;
+using Application.Services;
 using Application.Shared.Interfaces;
+using Infrastructure.BackgroundServices;
 using Infrastructure.Database.Context;
 using Infrastructure.Handlers;
 using Infrastructure.Options;
@@ -101,6 +103,9 @@ public static class DependencyInjection
         services.Configure<IdentityClientOptions>(
             configuration.GetSection("IdentityClient"));
         
+        services.Configure<RabbitMQSettings>(
+            configuration.GetSection("RabbitMQ"));
+        
         // 2. Named HttpClient для IdentityServer (простой, без Polly)
         // Почему без Polly: /connect/token — быстрый локальный вызов, 
         // если он падает — лучше сразу получить ошибку, чем ждать ретраев
@@ -115,6 +120,16 @@ public static class DependencyInjection
         
         // 3. Регистрация провайдера токенов
         services.AddSingleton<ITokenProvider, ClientCredentialsTokenService>();
+        
+        // 4. Outbox Repository
+        services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
+        services.AddHostedService<OutboxPublisherWorker>();
+        
+        // 5. RabbitMQ Hosted Service (приём входящих событий)
+        services.AddHostedService<RabbitMqHostedService>();
+        
+        // 6. Saga Orchestrator (управление шагами распределённой транзакции)
+        services.AddScoped<OrderSagaOrchestrator>();
 
         return services;
     }

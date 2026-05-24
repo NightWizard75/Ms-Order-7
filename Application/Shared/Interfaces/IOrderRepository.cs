@@ -12,4 +12,6 @@ public interface IOrderRepository
     Task AddAsync(Order order, CancellationToken ct = default);
     Task UpdateAsync(Order order, CancellationToken ct = default);
     Task<OrderStatusDto?> GetStatusByIdAsync(Guid id, CancellationToken ct = default);
+    // 👇 Новый метод: коммит всех изменений в рамках текущего DbContext
+    Task SaveChangesAsync(CancellationToken ct = default);
 }

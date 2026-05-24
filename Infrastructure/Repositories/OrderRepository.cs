@@ -31,4 +31,9 @@ public class OrderRepository(OrderDbContext context) : IOrderRepository
         context.Orders.Update(order);
         await context.SaveChangesAsync(ct);
     }
+    
+    public async Task SaveChangesAsync(CancellationToken ct = default)
+    {
+        await context.SaveChangesAsync(ct);
+    }
 }

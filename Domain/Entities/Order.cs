@@ -77,6 +77,14 @@ public class Order
         // 👇 Пересчитываем итоговую сумму после изменения цены
         TotalAmountInKopecks = CalculateTotalAmount();
     }
+    
+    public void MarkAsProcessing()
+    {
+        if (Status != OrderStatus.Pending)
+            throw new InvalidOperationException($"Нельзя перевести заказ со статусом {Status} в Processing");
+    
+        Status = OrderStatus.Processing;
+    }
 
     // ========================================================================
     // Публичные методы-конвертеры
@@ -112,9 +120,9 @@ public class Order
     /// </summary>
     public void Confirm()
     {
-        if (Status != OrderStatus.Pending)
+        if (Status != OrderStatus.Processing)
             throw new InvalidOperationException(
-                $"Невозможно подтвердить заказ в статусе {Status}. Ожидается статус Pending.");
+                $"Невозможно подтвердить заказ в статусе {Status}. Ожидается статус Processing.");
         
         Status = OrderStatus.Confirmed;
     }

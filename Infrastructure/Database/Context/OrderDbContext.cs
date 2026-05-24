@@ -9,6 +9,7 @@ public class OrderDbContext(DbContextOptions<OrderDbContext> options) : DbContex
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderSaga> OrderSagas { get; set; }
     public DbSet<SagaStep> SagaSteps { get; set; }
+    public DbSet<OutboxMessage> OutboxMessages { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

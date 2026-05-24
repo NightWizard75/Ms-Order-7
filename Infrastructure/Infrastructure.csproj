@@ -24,6 +24,7 @@
         <!-- ✅ Используется для retry/circuit breaker при вызовах к Product Service -->
         <PackageReference Include="Polly" Version="8.4.0" />
         <PackageReference Include="Polly.Extensions" Version="8.4.0" />
+        <PackageReference Include="RabbitMQ.Client" Version="7.2.1" />
     </ItemGroup>
 
     <ItemGroup>
