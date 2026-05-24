@@ -38,6 +38,9 @@
 
         <!-- Для моков в тестах -->
         <PackageReference Include="NSubstitute" Version="5.1.0" />
+
+        <!-- Для RabbitMqTestHelper -->
+        <PackageReference Include="RabbitMQ.Client" Version="7.2.1" />
     </ItemGroup>
 
     <ItemGroup>
